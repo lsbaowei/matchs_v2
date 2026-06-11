@@ -15,7 +15,7 @@
 ## 安装
 
 ```bash
-go get git.faceue.com/matchs_v2
+go get github.com/lsbaowei/matchs_v2
 ```
 
 如果是在当前仓库内开发，可以直接运行：
@@ -32,7 +32,7 @@ package main
 import (
 	"fmt"
 
-	"git.faceue.com/matchs_v2"
+	"github.com/lsbaowei/matchs_v2"
 )
 
 func main() {
