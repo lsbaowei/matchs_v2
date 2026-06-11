@@ -3,25 +3,37 @@ package matchs
 import "strings"
 
 const (
-	DFA      = 0
-	ASSEMBLE = 1
-	REGEXP   = 2
+	DFA      = 0 // DFA matcher，处理普通关键词。
+	ASSEMBLE = 1 // Assemble matcher，处理 | 和 # 组合规则。
+	REGEXP   = 2 // Regexp matcher，处理 reg@ 正则规则。
 
 	REGEXP_PREFIX = "reg@"
 )
 
+var matcherOrder = []int{DFA, ASSEMBLE, REGEXP}
+
+// MatchService 负责按固定顺序聚合不同类型的 matcher。
+//
+// Build 会把规则拆分为普通关键词、组合规则和正则规则；Match 会按
+// DFA、ASSEMBLE、REGEXP 的顺序执行。onlyOne 为 true 时，任意 matcher
+// 首次命中后立即返回。
 type MatchService struct {
 	matchers map[int]Matcher
 }
 
-//初始化
+// NewMatchService 创建一个空的匹配服务。
 func NewMatchService() *MatchService {
 	return &MatchService{
 		matchers: make(map[int]Matcher),
 	}
 }
 
-//Build 当前支持三种配置，可以新增
+// Build 构建规则列表。
+//
+// 规则分类：
+//   - 以 REGEXP_PREFIX 开头的规则会作为正则表达式处理。
+//   - 包含 | 或 # 的规则会作为组合规则处理。
+//   - 其他规则会作为普通关键词处理。
 func (m *MatchService) Build(words []string) {
 	var (
 		dfaList      []string
@@ -40,13 +52,13 @@ func (m *MatchService) Build(words []string) {
 	}
 
 	if len(dfaList) > 0 {
-		matcher := NewDFAMather()
+		matcher := NewDFAMatcher()
 		matcher.Build(dfaList)
 		m.matchers[DFA] = matcher
 	}
 
 	if len(assembleList) > 0 {
-		matcher := NewAssembleMather()
+		matcher := NewAssembleMatcher()
 		matcher.Build(assembleList)
 		m.matchers[ASSEMBLE] = matcher
 	}
@@ -58,21 +70,28 @@ func (m *MatchService) Build(words []string) {
 	}
 }
 
-//Match
+// Match 返回命中的规则列表和替换后的文本。
+//
+// repl 只会用于普通关键词的 DFA 替换；组合规则和正则规则当前只返回命中的规则标识，
+// 不执行脱敏替换。onlyOne 为 true 时，只返回按 matcherOrder 顺序遇到的第一类命中结果。
 func (m *MatchService) Match(text string, onlyOne bool, repl rune) (sensitiveWords []string, replaceText string) {
-	for _, x := range m.matchers {
-		ret, _ := x.Match(text, onlyOne, repl)
+	replaceText = text
+	for _, typ := range matcherOrder {
+		x, ok := m.matchers[typ]
+		if !ok {
+			continue
+		}
+		ret, replaced := x.Match(replaceText, onlyOne, repl)
+		replaceText = replaced
 		for _, word := range ret {
 			sensitiveWords = append(sensitiveWords, word)
 		}
-		//限制次数
 		if onlyOne && len(ret) > 0 {
 			return
 		}
 	}
 	return
 }
-
 
 /*-------------other util-------------------*/
 
