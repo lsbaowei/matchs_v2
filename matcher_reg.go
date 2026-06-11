@@ -3,11 +3,13 @@ package matchs
 import (
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 type regRule struct {
-	tag string
-	reg *regexp.Regexp
+	tag    string
+	reg    *regexp.Regexp
+	anchor string
 }
 
 // NewRegRule 编译一条正则规则。
@@ -19,9 +21,11 @@ func NewRegRule(str string) (*regRule, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s compile regexp error:%s", str, err.Error())
 	}
+	anchor, _ := r.LiteralPrefix()
 	return &regRule{
-		tag: REGEXP_PREFIX + str,
-		reg: r,
+		tag:    REGEXP_PREFIX + str,
+		reg:    r,
+		anchor: anchor,
 	}, nil
 }
 
@@ -40,7 +44,9 @@ func (r *regRule) matchAll(text string) map[string]string {
 //
 // 当前只返回命中的规则 tag，不执行文本替换。
 type RegexpMatcher struct {
-	matchers []*regRule
+	matchers      []*regRule
+	anchorIndex   map[string][]*regRule
+	fallbackRules []*regRule
 }
 
 // RegexpMather 是 RegexpMatcher 的兼容别名。
@@ -57,11 +63,39 @@ func NewRegexpMatcher() *RegexpMatcher {
 //
 // 无法被 Go 标准库 regexp 编译的规则会被忽略。
 func (a *RegexpMatcher) Build(words []string) {
+	if a.anchorIndex == nil {
+		a.anchorIndex = make(map[string][]*regRule)
+	}
 	for _, w := range words {
 		if m, err := NewRegRule(w); err == nil {
-			a.matchers = append(a.matchers, m)
+			a.addRule(m)
 		}
 	}
+}
+
+func (a *RegexpMatcher) addRule(r *regRule) {
+	a.matchers = append(a.matchers, r)
+	if r.anchor == "" {
+		a.fallbackRules = append(a.fallbackRules, r)
+		return
+	}
+	a.anchorIndex[r.anchor] = append(a.anchorIndex[r.anchor], r)
+}
+
+func (a *RegexpMatcher) candidateRules(text string) map[*regRule]struct{} {
+	candidates := make(map[*regRule]struct{}, len(a.fallbackRules))
+	for _, rule := range a.fallbackRules {
+		candidates[rule] = struct{}{}
+	}
+	for anchor, rules := range a.anchorIndex {
+		if !strings.Contains(text, anchor) {
+			continue
+		}
+		for _, rule := range rules {
+			candidates[rule] = struct{}{}
+		}
+	}
+	return candidates
 }
 
 // Match 返回命中的正则规则 tag。
@@ -69,7 +103,14 @@ func (a *RegexpMatcher) Build(words []string) {
 // repl 参数当前不会生效；desensitization 始终返回原文。
 func (a *RegexpMatcher) Match(text string, onlyOne bool, repl rune) (word []string, desensitization string) {
 	desensitization = text
+	candidates := a.candidateRules(text)
+	if len(candidates) == 0 {
+		return
+	}
 	for _, r := range a.matchers {
+		if _, ok := candidates[r]; !ok {
+			continue
+		}
 		ret := r.matchAll(text)
 		for tag := range ret {
 			word = append(word, tag)

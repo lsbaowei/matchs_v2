@@ -35,6 +35,21 @@ func TestDFAMatcherOnlyOne(t *testing.T) {
 	}
 }
 
+func TestDFAMatcherOverlappingKeepsStartOrder(t *testing.T) {
+	matcher := NewDFAMatcher()
+	matcher.Build([]string{"abc", "b", "bc"})
+
+	words, replaced := matcher.Match("abc", false, '*')
+
+	wantWords := []string{"abc", "b", "bc"}
+	if !reflect.DeepEqual(words, wantWords) {
+		t.Fatalf("words = %#v, want %#v", words, wantWords)
+	}
+	if replaced != "***" {
+		t.Fatalf("replaced = %q, want %q", replaced, "***")
+	}
+}
+
 func TestAssembleMatcherANDOrder(t *testing.T) {
 	matcher := NewAssembleMatcher()
 	matcher.Build([]string{"A|B|C"})
@@ -47,6 +62,23 @@ func TestAssembleMatcherANDOrder(t *testing.T) {
 	words, _ = matcher.Match("BxxAxxC", false, '*')
 	if len(words) != 0 {
 		t.Fatalf("unordered words = %#v, want empty", words)
+	}
+}
+
+func TestAssembleMatcherPrefilter(t *testing.T) {
+	matcher := NewAssembleMatcher()
+	matcher.Build([]string{"A|B|C", "X|Y"})
+
+	if _, ok := matcher.anchorIndex["A"]; !ok {
+		t.Fatal("anchor A not found")
+	}
+	if _, ok := matcher.anchorIndex["X"]; !ok {
+		t.Fatal("anchor X not found")
+	}
+
+	words, _ := matcher.Match("xxBxxC", false, '*')
+	if len(words) != 0 {
+		t.Fatalf("words = %#v, want empty", words)
 	}
 }
 
@@ -79,6 +111,23 @@ func TestRegexpMatcher(t *testing.T) {
 	}
 	if replaced != "手机号13800138000" {
 		t.Fatalf("replaced = %q, want %q", replaced, "手机号13800138000")
+	}
+}
+
+func TestRegexpMatcherPrefilterAndFallback(t *testing.T) {
+	matcher := NewRegexpMatcher()
+	matcher.Build([]string{`hello\d+`, `\d{11}`})
+
+	if _, ok := matcher.anchorIndex["hello"]; !ok {
+		t.Fatal("anchor hello not found")
+	}
+	if len(matcher.fallbackRules) != 1 {
+		t.Fatalf("fallbackRules length = %d, want 1", len(matcher.fallbackRules))
+	}
+
+	words, _ := matcher.Match("手机号13800138000", false, '*')
+	if !reflect.DeepEqual(words, []string{`reg@\d{11}`}) {
+		t.Fatalf("words = %#v, want %#v", words, []string{`reg@\d{11}`})
 	}
 }
 

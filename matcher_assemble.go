@@ -11,6 +11,7 @@ type rule struct {
 	raw      string
 	words    []string
 	ruleType int
+	anchor   string
 }
 
 // match 判断组合规则是否命中文本。
@@ -49,7 +50,9 @@ func (r *rule) match(text string) bool {
 //
 // AssembleMatcher 当前只返回命中的规则，不执行文本替换。
 type AssembleMatcher struct {
-	rules []*rule
+	rules         []*rule
+	anchorIndex   map[string][]*rule
+	fallbackRules []*rule
 }
 
 // AssembleMather 是 AssembleMatcher 的兼容别名。
@@ -71,23 +74,62 @@ func NewAssembleMather() *AssembleMatcher {
 
 // Build 构建组合规则列表。
 func (a *AssembleMatcher) Build(words []string) {
+	if a.anchorIndex == nil {
+		a.anchorIndex = make(map[string][]*rule)
+	}
 
 	for _, w := range words {
-
 		if strings.Contains(w, "|") {
-			a.rules = append(a.rules, &rule{
+			r := &rule{
 				raw:      w,
 				words:    strings.Split(w, "|"),
 				ruleType: ruleTypeAnd,
-			})
+			}
+			a.addRule(r)
 		} else if strings.Contains(w, "#") {
-			a.rules = append(a.rules, &rule{
+			r := &rule{
 				raw:      w,
 				words:    strings.Split(w, "#"),
 				ruleType: ruleTypeNon,
-			})
+			}
+			a.addRule(r)
 		}
 	}
+}
+
+func (a *AssembleMatcher) addRule(r *rule) {
+	r.anchor = r.firstNonEmptyWord()
+	a.rules = append(a.rules, r)
+	if r.anchor == "" {
+		a.fallbackRules = append(a.fallbackRules, r)
+		return
+	}
+	a.anchorIndex[r.anchor] = append(a.anchorIndex[r.anchor], r)
+}
+
+func (r *rule) firstNonEmptyWord() string {
+	for _, word := range r.words {
+		if word != "" {
+			return word
+		}
+	}
+	return ""
+}
+
+func (a *AssembleMatcher) candidateRules(text string) map[*rule]struct{} {
+	candidates := make(map[*rule]struct{}, len(a.fallbackRules))
+	for _, rule := range a.fallbackRules {
+		candidates[rule] = struct{}{}
+	}
+	for anchor, rules := range a.anchorIndex {
+		if !strings.Contains(text, anchor) {
+			continue
+		}
+		for _, rule := range rules {
+			candidates[rule] = struct{}{}
+		}
+	}
+	return candidates
 }
 
 // Match 返回命中的组合规则。
@@ -95,7 +137,14 @@ func (a *AssembleMatcher) Build(words []string) {
 // repl 参数当前不会生效；desensitization 始终返回原文。
 func (a *AssembleMatcher) Match(text string, onlyOne bool, repl rune) (word []string, desensitization string) {
 	desensitization = text
+	candidates := a.candidateRules(text)
+	if len(candidates) == 0 {
+		return
+	}
 	for _, rule := range a.rules {
+		if _, ok := candidates[rule]; !ok {
+			continue
+		}
 		if rule.match(text) {
 			word = append(word, rule.raw)
 			if onlyOne {
