@@ -1,6 +1,6 @@
-# matchs
+# matchs_v2
 
-`matchs` 是一个用于文本关键词快速查找与替换的 Go 包。它可以对输入文本批量匹配普通关键词、组合规则和正则规则，并返回命中的规则列表以及替换后的文本。
+`matchs_v2` 是一个用于文本关键词快速查找与替换的 Go 包。它可以对输入文本批量匹配普通关键词、组合规则和正则规则，并返回命中的规则列表以及替换后的文本。
 
 ## 功能特性
 
@@ -15,7 +15,7 @@
 ## 安装
 
 ```bash
-go get git.faceue.com/matchs
+go get git.faceue.com/matchs_v2
 ```
 
 如果是在当前仓库内开发，可以直接运行：
@@ -32,11 +32,11 @@ package main
 import (
 	"fmt"
 
-	"git.faceue.com/matchs"
+	"git.faceue.com/matchs_v2"
 )
 
 func main() {
-	service := matchs.NewMatchService()
+	service := matchs_v2.NewMatchService()
 	service.Build([]string{
 		"敏感词",
 		"A|B",
@@ -121,7 +121,7 @@ service.Build([]string{`reg@1\d{10}`})
 创建匹配服务。
 
 ```go
-service := matchs.NewMatchService()
+service := matchs_v2.NewMatchService()
 ```
 
 ### `Build`
